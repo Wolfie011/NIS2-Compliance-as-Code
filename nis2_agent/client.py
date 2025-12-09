@@ -47,3 +47,47 @@ def send_report(
 
     logger.info("Report successfully sent, server response: %s", data)
     return data
+
+
+def fetch_config(
+    logger: logging.Logger,
+    server_url: str,
+    agent_id: str,
+    timeout: float = 5.0,
+) -> Optional[Dict[str, Any]]:
+    """
+    Pobiera konfigurację dla danego agenta z serwera.
+    Zwraca dict z polami m.in.:
+      - agent_id
+      - scan_interval_seconds
+      - enabled
+    albo None przy błędzie.
+    """
+    url = server_url.rstrip("/") + f"/api/v1/agents/{agent_id}/config"
+    try:
+        logger.info("Fetching config from %s ...", url)
+        resp = requests.get(url, timeout=timeout)
+    except Exception as e:
+        logger.error("Error while fetching config: %s", e)
+        return None
+
+    if resp.status_code >= 400:
+        logger.error(
+            "Server responded with error status %s while fetching config: %s",
+            resp.status_code,
+            resp.text,
+        )
+        return None
+
+    try:
+        data = resp.json()
+    except ValueError:
+        logger.error("Config response is not valid JSON: %r", resp.text)
+        return None
+
+    logger.info(
+        "Config fetched: enabled=%s, scan_interval_seconds=%s",
+        data.get("enabled"),
+        data.get("scan_interval_seconds"),
+    )
+    return data

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .config import AGENTS_DIR
-from .models import AgentReportCreate, AgentSummary, ReportSummary, RuleResultModel
+from .models import AgentReportCreate, AgentSummary, ReportSummary, RuleResultModel, AgentConfig
 
 
 def _agent_dir(agent_id: str) -> Path:
@@ -152,3 +152,30 @@ def get_latest_raw_report(agent_id: str) -> Optional[Dict]:
     Pełny surowy raport (scan + rules) – do debugowania lub dalszej analizy.
     """
     return _load_latest_report_raw(agent_id)
+
+
+def _agent_config_path(agent_id: str) -> Path:
+    return _agent_dir(agent_id) / "config.json"
+
+
+def get_agent_config(agent_id: str) -> AgentConfig:
+    """
+    Zwraca konfigurację agenta.
+    Na razie: jeśli nie istnieje osobny plik, zwracamy domyślną wartość.
+    """
+    path = _agent_config_path(agent_id)
+    if not path.exists():
+        # domyślna konfiguracja: skan co 6 godzin, włączony
+        return AgentConfig(
+            agent_id=agent_id,
+            scan_interval_seconds=21600,
+            enabled=True,
+        )
+
+    with path.open("r", encoding="utf-8") as f:
+        raw = json.load(f)
+
+    # Upewniamy się, że agent_id jest ustawiony
+    raw.setdefault("agent_id", agent_id)
+
+    return AgentConfig(**raw)

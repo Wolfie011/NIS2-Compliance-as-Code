@@ -41,3 +41,14 @@ class ReportSummary(BaseModel):
     report_timestamp: str
     hostname: str
     failed_rules: List[RuleResultModel]
+
+class AgentConfig(BaseModel):
+    agent_id: str
+    scan_interval_seconds: int = Field(
+        21600,
+        description="Częstotliwość skanu w sekundach (domyślnie 6h).",
+    )
+    enabled: bool = Field(
+        True,
+        description="Czy agent ma wykonywać skany.",
+    )

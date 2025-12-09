@@ -1,0 +1,11 @@
+{
+  "agent_id": "DESKTOP-5LGRH5K",
+  "reports": [
+    {
+      "report_timestamp": "20251209T122513Z",
+      "file": "reports/20251209T122513Z.json",
+      "hostname": "DESKTOP-5LGRH5K",
+      "failed_rules_count": 0
+    }
+  ]
+}

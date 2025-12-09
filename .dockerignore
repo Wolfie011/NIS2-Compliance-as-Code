@@ -1,0 +1,42 @@
+# VCS
+.git
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+
+# Wirtualne środowiska
+.venv/
+venv/
+env/
+
+# Lokalne logi i dane runtime
+logs/
+server_data/
+
+# Artefakty buildów
+dist/
+build/
+*.spec
+
+# Kod, który nie jest potrzebny w obrazie serwera
+nis2_agent/
+tests/
+docs/
+
+# IDE / edytory
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Pliki, które i tak nie są potrzebne w runtime
+*.tmp
+*.log
+.DS_Store
+Thumbs.db

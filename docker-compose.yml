@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  nis2_server:
+    build: .
+    container_name: nis2_server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./server_data:/app/server_data
+      - ./rules:/app/rules
+      - ./downloads:/app/downloads

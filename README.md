@@ -7,13 +7,14 @@ Minimalny PoC systemu do zbierania danych o infrastrukturze i oceny podstawowych
   - skanuje system (OS, otwarte porty TCP, wybrane opcje SSH),
   - ocenia wynik skanu względem reguł zapisanych w YAML,
   - loguje wyniki lokalnie,
-  - opcjonalnie wysyła raport do serwera HTTP.
+  - opcjonalnie wysyła raport do serwera HTTP,
+  - może działać w trybie jednorazowym (`once`) lub cyklicznym (`loop`, np. co 6h).
 - **nis2_server** – prosty serwer:
   - przyjmuje raporty z agentów,
   - zapisuje je w strukturze plikowej,
-  - udostępnia API do przeglądania agentów i ich ostatnich wyników.
-
-Projekt jest celowo prosty – jako baza pod dalszy rozwój.
+  - udostępnia API do przeglądania agentów i ich ostatnich wyników,
+  - wystawia prosty dashboard webowy,
+  - udostępnia bootstrap do instalacji agenta na Windows (`/register`).
 
 ---
 
@@ -39,14 +40,17 @@ NIS2-COMPLIENCE-AS-CODE/
 │   └── storage.py
 ├── rules/
 │   └── basic.yml
+├── downloads/           # tutaj ląduje zbudowany nis2_agent_win.exe
 ├── logs/                # tworzone/autouzupełniane przez agenta (niekonieczne w repo)
 ├── server_data/         # tworzone przez serwer (niekonieczne w repo)
 ├── requirements-agent.txt
 ├── requirements-server.txt
-└── requirements.txt
+├── requirements.txt
+├── Dockerfile           # obraz serwera
+└── docker-compose.yml   # serwer jako usługa (nis2_server)
 ````
 
-Katalogi `logs/` i `server_data/` warto dodać do `.gitignore`.
+Katalogi `logs/`, `server_data/`, `downloads/` oraz `.venv/` warto dodać do `.gitignore`.
 
 ---
 
@@ -71,6 +75,12 @@ Alternatywnie osobno:
 ```bash
 pip install -r requirements-server.txt
 pip install -r requirements-agent.txt
+```
+
+Dodatkowo na maszynie buildowej dla Windows EXE:
+
+```bash
+pip install pyinstaller
 ```
 
 ---
@@ -106,7 +116,7 @@ Agent przekazuje dane ze skanera do silnika reguł jako słownik (np. `ssh`, `ne
 
 ---
 
-## Uruchomienie serwera
+## Uruchomienie serwera (tryb dev)
 
 W root projektu:
 
@@ -117,7 +127,11 @@ uvicorn nis2_server.main:app --reload
 Domyślnie:
 
 * healthcheck: `GET http://127.0.0.1:8000/health`
-* swagger UI: `http://127.0.0.1:8000/docs`
+* Swagger UI: `http://127.0.0.1:8000/docs`
+* dashboard: `http://127.0.0.1:8000/` (lista agentów + niespełnione reguły)
+* rejestracja agenta (instrukcja PowerShell): `http://127.0.0.1:8000/register`
+* bootstrap PowerShell: `http://127.0.0.1:8000/register/bootstrap.ps1`
+* pobieranie EXE agenta: `http://127.0.0.1:8000/downloads/nis2_agent_win.exe`
 
 Po przyjęciu pierwszego raportu serwer tworzy katalog:
 
@@ -126,13 +140,31 @@ server_data/
 └── agents/
     └── <agent_id>/
         ├── index.json
+        ├── config.json        # opcjonalna konfiguracja agenta
         └── reports/
             └── <timestamp>.json
 ```
 
 ---
 
-## Uruchomienie agenta
+## Uruchomienie serwera w Dockerze
+
+W root projektu:
+
+```bash
+docker-compose up -d
+```
+
+Domyślnie serwis `nis2_server` będzie dostępny na `http://localhost:8000`, z wolumenami:
+
+* `./server_data:/app/server_data`
+* `./rules:/app/rules`
+
+Katalog `downloads/` z EXE jest kopiowany do obrazu przy budowie.
+
+---
+
+## Agent – tryb jednorazowy (`once`)
 
 W drugim terminalu (z aktywnym venv), nadal w root projektu:
 
@@ -141,7 +173,8 @@ python -m nis2_agent.main \
   --rules-dir rules \
   --log-dir logs \
   --server-url http://127.0.0.1:8000 \
-  --agent-id test-agent-01
+  --agent-id test-agent-01 \
+  --mode once
 ```
 
 Agent:
@@ -160,6 +193,88 @@ logs/
 ├── rules_<timestamp>.json
 └── findings.jsonl      # tylko niespełnione reguły (JSONL)
 ```
+
+---
+
+## Agent – tryb cykliczny (`loop`) z configiem z serwera
+
+Tryb `loop` powoduje, że agent:
+
+1. (jeśli ma ustawiony `--server-url`) pobiera konfigurację z:
+
+   * `GET /api/v1/agents/{agent_id}/config`
+   * pola: `scan_interval_seconds` (domyślnie 21600 = 6h), `enabled` (bool),
+2. jeśli `enabled == True` – robi skan + wysyłka raportu,
+3. śpi `scan_interval_seconds` i powtarza.
+
+Uruchomienie:
+
+```bash
+python -m nis2_agent.main \
+  --rules-dir rules \
+  --log-dir logs \
+  --server-url http://127.0.0.1:8000 \
+  --agent-id test-agent-01 \
+  --mode loop
+```
+
+Jeżeli serwer nie zwróci configu, agent używa domyślnego interwału 6h.
+
+---
+
+## Windows EXE – build i nadpisywanie w `downloads/`
+
+Na maszynie Windows (z repo `NIS2-COMPLIENCE-AS-CODE` i zainstalowanym PyInstallerem):
+
+```bash
+cd NIS2-COMPLIENCE-AS-CODE
+pyinstaller --onefile -n nis2_agent_win --distpath downloads -m nis2_agent.main
+```
+
+To:
+
+* buduje agenta jako pojedynczy plik exe,
+* zapisuje go do `downloads/nis2_agent_win.exe`,
+* przy kolejnym buildzie nadpisuje istniejący plik (zawsze aktualny binarek w `downloads/`).
+
+Serwer zakłada, że EXE jest dostępny pod ścieżką:
+
+```text
+downloads/nis2_agent_win.exe
+```
+
+i serwuje go jako:
+
+```text
+GET /downloads/nis2_agent_win.exe
+```
+
+---
+
+## Rejestracja agenta na Windows przez `/register`
+
+Serwer udostępnia stronę ułatwiającą instalację agenta:
+
+* `GET /register` – HTML z instrukcją i komendą PowerShell,
+* `GET /register/bootstrap.ps1` – skrypt instalacyjny PowerShell.
+
+Przykładowa komenda do uruchomienia na Windows (PowerShell jako Administrator):
+
+```powershell
+iwr http://<SERVER_HOST>:8000/register/bootstrap.ps1 -UseBasicParsing | iex
+```
+
+Skrypt:
+
+1. ustala `ServerUrl` na adres serwera (z nagłówka żądania),
+2. pobiera `nis2_agent_win.exe` z `/downloads/nis2_agent_win.exe`,
+3. zapisuje go w `C:\Program Files\NIS2Agent\`,
+4. rejestruje zadanie Harmonogramu Zadań `NIS2Agent`, które:
+
+   * uruchamia EXE w trybie `--mode loop`,
+   * ustawia `--server-url` na adres serwera,
+   * ustawia `--agent-id` na `COMPUTERNAME`,
+   * startuje raz i powtarza się co 6 godzin.
 
 ---
 
@@ -185,16 +300,14 @@ Pełny surowy JSON ostatniego raportu:
 curl http://127.0.0.1:8000/api/v1/agents/test-agent-01/latest/raw
 ```
 
----
+Konfiguracja agenta:
 
-## Następne kroki (do dalszego rozwoju)
-
-* rozbudowa skanera (więcej collectorów: użytkownicy, backupy, konfiguracje usług),
-* rozszerzenie DSL reguł (bezpośrednie parsowanie, bez `eval`),
-* auth + TLS między agentem a serwerem,
-* prosty frontend (dashboard) nad API serwera,
-* centralne wersjonowanie paczek reguł („policy packs” dla różnych typów organizacji).
-
+```bash
+curl http://127.0.0.1:8000/api/v1/agents/test-agent-01/config
 ```
-::contentReference[oaicite:0]{index=0}
+
+Pobranie EXE agenta:
+
+```bash
+curl -O http://127.0.0.1:8000/downloads/nis2_agent_win.exe
 ```

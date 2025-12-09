@@ -4,13 +4,17 @@ import argparse
 import datetime as dt
 import json
 import socket
+import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-from .logging_config import setup_logging
-from .scanner import scan_system
-from .rules_engine import RulesEngine
-from .client import send_report  # NOWE
+from nis2_agent.logging_config import setup_logging
+from nis2_agent.scanner import scan_system
+from nis2_agent.rules_engine import RulesEngine
+from nis2_agent.client import send_report, fetch_config
+
+
+DEFAULT_INTERVAL_SECONDS = 6 * 60 * 60  # 6h
 
 
 def save_json(data: Dict[str, Any], directory: str, prefix: str) -> Path:
@@ -23,63 +27,35 @@ def save_json(data: Dict[str, Any], directory: str, prefix: str) -> Path:
     return file_path
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Minimal NIS2 compliance agent (scan + rules + optional HTTP report)."
-    )
-    parser.add_argument(
-        "--rules-dir",
-        default="rules",
-        help="Directory with YAML rules files.",
-    )
-    parser.add_argument(
-        "--log-dir",
-        default="logs",
-        help="Directory for log files and JSON outputs.",
-    )
-    parser.add_argument(
-        "--server-url",
-        default=None,
-        help=(
-            "Base URL nis2_server (np. http://127.0.0.1:8000). "
-            "Jeśli nie podane, agent nie wysyła raportu do serwera."
-        ),
-    )
-    parser.add_argument(
-        "--agent-id",
-        default=None,
-        help=(
-            "Identyfikator agenta. Jeśli nie podany, użyty będzie hostname."
-        ),
-    )
-
-    args = parser.parse_args()
-
-    logger = setup_logging(args.log_dir)
+def run_single_scan(
+    logger,
+    rules_dir: str,
+    log_dir: str,
+    server_url: str | None,
+    agent_id: str,
+) -> None:
     logger.info("Starting scan...")
 
     scan_result = scan_system()
     scan_dict = scan_result.to_dict()
 
-    scan_file = save_json(scan_dict, args.log_dir, "scan")
+    scan_file = save_json(scan_dict, log_dir, "scan")
     logger.info("Scan saved to %s", scan_file)
 
-    engine = RulesEngine(rules_dir=args.rules_dir)
+    engine = RulesEngine(rules_dir=rules_dir)
     logger.info("Loaded %d rules", len(engine.rules))
 
     rule_results = engine.evaluate(scan_dict)
 
     # Zapis wyników do JSON
-    results_serialized = [
-        engine.serialize_result(r) for r in rule_results
-    ]
+    results_serialized = [engine.serialize_result(r) for r in rule_results]
     results_file = save_json(
-        {"results": results_serialized}, args.log_dir, "rules"
+        {"results": results_serialized}, log_dir, "rules"
     )
     logger.info("Rule results saved to %s", results_file)
 
     # Dodatkowy log w formie JSONL dla findings
-    jsonl_path = Path(args.log_dir) / "findings.jsonl"
+    jsonl_path = Path(log_dir) / "findings.jsonl"
     with jsonl_path.open("a", encoding="utf-8") as f:
         for r in rule_results:
             if not r.passed:
@@ -109,8 +85,8 @@ def main() -> None:
                     r.description,
                 )
 
-    if args.server_url:
-        agent_id = args.agent_id or socket.gethostname()
+    # Wysyłka do serwera (jeśli skonfigurowany)
+    if server_url:
         payload = {
             "agent_id": agent_id,
             "scan": scan_dict,
@@ -118,7 +94,7 @@ def main() -> None:
         }
         resp = send_report(
             logger=logger,
-            server_url=args.server_url,
+            server_url=server_url,
             payload=payload,
         )
         if resp is None:
@@ -128,6 +104,100 @@ def main() -> None:
                 "Report accepted by server. Returned timestamp: %s",
                 resp.get("timestamp"),
             )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="NIS2 agent (scan + rules + optional HTTP report, loop or once)."
+    )
+    parser.add_argument(
+        "--rules-dir",
+        default="rules",
+        help="Directory with YAML rules files.",
+    )
+    parser.add_argument(
+        "--log-dir",
+        default="logs",
+        help="Directory for log files and JSON outputs.",
+    )
+    parser.add_argument(
+        "--server-url",
+        default=None,
+        help=(
+            "Base URL nis2_server (np. http://127.0.0.1:8000). "
+            "Jeśli nie podane, agent działa tylko lokalnie."
+        ),
+    )
+    parser.add_argument(
+        "--agent-id",
+        default=None,
+        help=(
+            "Identyfikator agenta. Jeśli nie podany, użyty będzie hostname."
+        ),
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["once", "loop"],
+        default="once",
+        help="Tryb pracy agenta: 'once' (jeden skan) albo 'loop' (cyklicznie).",
+    )
+
+    args = parser.parse_args()
+
+    logger = setup_logging(args.log_dir)
+    agent_id = args.agent_id or socket.gethostname()
+    logger.info("Agent starting with id=%s, mode=%s", agent_id, args.mode)
+
+    if args.mode == "once":
+        run_single_scan(
+            logger=logger,
+            rules_dir=args.rules_dir,
+            log_dir=args.log_dir,
+            server_url=args.server_url,
+            agent_id=agent_id,
+        )
+        return
+
+    # Tryb 'loop'
+    interval = DEFAULT_INTERVAL_SECONDS
+
+    try:
+        while True:
+            # 1. Opcjonalnie pobierz config z serwera (jeśli jest URL)
+            if args.server_url:
+                cfg = fetch_config(
+                    logger=logger,
+                    server_url=args.server_url,
+                    agent_id=agent_id,
+                )
+                if cfg:
+                    enabled = bool(cfg.get("enabled", True))
+                    interval = int(
+                        cfg.get("scan_interval_seconds", DEFAULT_INTERVAL_SECONDS)
+                    )
+                    if not enabled:
+                        logger.info(
+                            "Agent disabled by config. Sleeping for %s seconds.",
+                            interval,
+                        )
+                        time.sleep(max(interval, 60))
+                        continue
+
+            # 2. Wykonaj skan
+            run_single_scan(
+                logger=logger,
+                rules_dir=args.rules_dir,
+                log_dir=args.log_dir,
+                server_url=args.server_url,
+                agent_id=agent_id,
+            )
+
+            # 3. Poczekaj do kolejnego skanu
+            logger.info("Sleeping for %s seconds before next scan...", interval)
+            time.sleep(max(interval, 60))
+
+    except KeyboardInterrupt:
+        logger.info("Agent interrupted, exiting.")
 
 
 if __name__ == "__main__":
