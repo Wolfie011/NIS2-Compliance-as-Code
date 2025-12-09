@@ -1,0 +1,20 @@
+- id: "NIS2-SSH-001"
+  description: "Root login po SSH powinien być wyłączony (PermitRootLogin)."
+  severity: "high"
+  condition: >
+    ssh.get("permit_root_login", "").lower() not in ("yes", "without-password")
+  tags: ["ssh", "access_control"]
+
+- id: "NIS2-SSH-002"
+  description: "SSH nie powinien pozwalać na logowanie hasłem."
+  severity: "medium"
+  condition: >
+    ssh.get("password_authentication", "").lower() == "no"
+  tags: ["ssh", "authentication"]
+
+- id: "NIS2-NET-001"
+  description: "Port 23 (telnet) nie powinien być otwarty."
+  severity: "high"
+  condition: >
+    23 not in network.get("open_tcp_ports", [])
+  tags: ["network", "legacy", "hardening"]

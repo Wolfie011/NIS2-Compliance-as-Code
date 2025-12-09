@@ -1,0 +1,11 @@
+{
+  "agent_id": "test-agent-01",
+  "reports": [
+    {
+      "report_timestamp": "20251209T015913Z",
+      "file": "reports/20251209T015913Z.json",
+      "hostname": "DESKTOP-1EUPCNK",
+      "failed_rules_count": 1
+    }
+  ]
+}

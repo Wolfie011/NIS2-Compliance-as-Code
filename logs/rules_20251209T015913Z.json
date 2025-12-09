@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "rule_id": "NIS2-SSH-001",
+      "passed": true,
+      "severity": "high",
+      "description": "Root login po SSH powinien być wyłączony (PermitRootLogin).",
+      "details": null,
+      "timestamp": "2025-12-09T01:59:13.115614Z"
+    },
+    {
+      "rule_id": "NIS2-SSH-002",
+      "passed": false,
+      "severity": "medium",
+      "description": "SSH nie powinien pozwalać na logowanie hasłem.",
+      "details": null,
+      "timestamp": "2025-12-09T01:59:13.115614Z"
+    },
+    {
+      "rule_id": "NIS2-NET-001",
+      "passed": true,
+      "severity": "high",
+      "description": "Port 23 (telnet) nie powinien być otwarty.",
+      "details": null,
+      "timestamp": "2025-12-09T01:59:13.115614Z"
+    }
+  ]
+}
