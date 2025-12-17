@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -16,6 +15,7 @@ class Rule:
     severity: str
     condition: str
     tags: List[str]
+    frameworks: List[str]
 
 
 @dataclass
@@ -24,6 +24,8 @@ class RuleResult:
     passed: bool
     severity: str
     description: str
+    tags: List[str]
+    frameworks: List[str]
     details: Optional[str]
     timestamp: str
 
@@ -51,6 +53,7 @@ class RulesEngine:
                         severity=item.get("severity", "low"),
                         condition=item["condition"],
                         tags=item.get("tags", []),
+                        frameworks=item.get("frameworks", []),
                     )
                 )
 
@@ -58,7 +61,6 @@ class RulesEngine:
         results: List[RuleResult] = []
         now = dt.datetime.utcnow().isoformat() + "Z"
 
-        # Kontekst dla expresji: top-level pola + całe 'data'
         ctx: Dict[str, Any] = {"data": data}
         ctx.update(data)
 
@@ -76,6 +78,8 @@ class RulesEngine:
                     passed=passed,
                     severity=rule.severity,
                     description=rule.description,
+                    tags=rule.tags,
+                    frameworks=rule.frameworks,
                     details=details,
                     timestamp=now,
                 )
@@ -90,6 +94,8 @@ class RulesEngine:
             "passed": result.passed,
             "severity": result.severity,
             "description": result.description,
+            "tags": result.tags,
+            "frameworks": result.frameworks,
             "details": result.details,
             "timestamp": result.timestamp,
         }

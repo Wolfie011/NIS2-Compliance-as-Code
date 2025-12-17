@@ -1,9 +1,12 @@
+# SSH / podstawowy hardening
+
 - id: "NIS2-SSH-001"
   description: "Root login po SSH powinien być wyłączony (PermitRootLogin)."
   severity: "high"
   condition: >
     ssh.get("permit_root_login", "").lower() not in ("yes", "without-password")
   tags: ["ssh", "access_control"]
+  frameworks: ["NIS2:art21", "CIS:IG1", "CIS:4", "ISO27001:A.8.5"]
 
 - id: "NIS2-SSH-002"
   description: "SSH nie powinien pozwalać na logowanie hasłem."
@@ -11,6 +14,7 @@
   condition: >
     ssh.get("password_authentication", "").lower() == "no"
   tags: ["ssh", "authentication"]
+  frameworks: ["NIS2:art21", "CIS:IG1", "CIS:6", "ISO27001:A.8.5", "NIST:PR.AC-7"]
 
 - id: "NIS2-NET-001"
   description: "Port 23 (telnet) nie powinien być otwarty."
@@ -18,3 +22,85 @@
   condition: >
     23 not in network.get("open_tcp_ports", [])
   tags: ["network", "legacy", "hardening"]
+  frameworks: ["NIS2:art21", "CIS:IG1", "CIS:4", "CIS:10", "ISO27001:A.8.8"]
+
+# Firewall / ochrona sieci
+
+- id: "NIS2-FW-001"
+  description: "Na hoście powinna być włączona zapora sieciowa."
+  severity: "high"
+  condition: >
+    bool(network.get("firewall_enabled", False))
+  tags: ["network", "firewall", "baseline"]
+  frameworks: ["NIS2:art21", "CIS:IG1", "CIS:4", "NIST:PR.PT-3", "ISO27001:A.8.20"]
+
+# Stan systemu / EoL
+
+- id: "NIS2-OS-001"
+  description: "System operacyjny powinien być wspierany (nie po EOL)."
+  severity: "high"
+  condition: >
+    bool(os.get("is_supported", True))
+  tags: ["os", "patching", "lifecycle"]
+  frameworks: ["NIS2:art21", "CIS:7", "ISO27001:A.5.36", "NIST:ID.AM-5"]
+
+# Backup / ciągłość działania
+
+- id: "NIS2-BACKUP-001"
+  description: "Ostatnia skuteczna kopia zapasowa nie powinna być starsza niż 7 dni."
+  severity: "high"
+  condition: >
+    os.get("last_backup_age_days") is not None
+    and os.get("last_backup_age_days") <= 7
+  tags: ["backup", "continuity", "resilience"]
+  frameworks: ["NIS2:art21", "CIS:11", "ISO27001:A.8.13", "NIST:PR.IP-4", "PCI:Req9"]
+
+# Centralne logowanie
+
+- id: "NIS2-LOG-001"
+  description: "Host powinien wysyłać logi do centralnego systemu logowania."
+  severity: "medium"
+  condition: >
+    bool(os.get("central_logging_enabled", False))
+  tags: ["logging", "monitoring"]
+  frameworks: ["NIS2:art21", "CIS:8", "ISO27001:A.8.15", "NIST:DE.CM-1", "PCI:Req10"]
+
+# MFA / uprzywilejowani
+
+- id: "NIS2-MFA-001"
+  description: "Dostęp uprzywilejowany na hoście powinien wymagać MFA."
+  severity: "high"
+  condition: >
+    bool(os.get("mfa_enabled", False))
+  tags: ["identity", "privileged_access", "mfa"]
+  frameworks: ["NIS2:art21", "CIS:6", "ISO27001:A.8.5", "NIST:PR.AC-7", "PCI:Req8"]
+
+# Oprogramowanie nieautoryzowane
+
+- id: "CIS-SW-001"
+  description: "Na hoście nie powinno być zainstalowanego nieautoryzowanego oprogramowania."
+  severity: "medium"
+  condition: >
+    len(os.get("unauthorized_software", [])) == 0
+  tags: ["software", "inventory", "whitelisting"]
+  frameworks: ["CIS:IG1", "CIS:2", "ISO27001:A.8.9", "NIST:PR.IP-1"]
+
+# Lokalne konta admina
+
+- id: "CIS-AC-001"
+  description: "Liczba lokalnych kont administracyjnych powinna być ograniczona (<= 3)."
+  severity: "medium"
+  condition: >
+    len(os.get("local_admin_accounts", [])) <= 3
+  tags: ["accounts", "privileges"]
+  frameworks: ["CIS:6", "NIST:PR.AC-4", "ISO27001:A.8.2"]
+
+# SSH protokół 2
+
+- id: "SSH-PROT-001"
+  description: "SSH powinien używać wyłącznie protokołu w wersji 2."
+  severity: "low"
+  condition: >
+    str(ssh.get("protocol_version", "2")) == "2"
+  tags: ["ssh", "crypto"]
+  frameworks: ["CIS:IG1", "CIS:4", "NIST:PR.DS-2", "ISO27001:A.8.24"]
