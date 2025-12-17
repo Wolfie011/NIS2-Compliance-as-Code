@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import hashlib
+import json
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, FileResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    FileResponse,
+)
+import yaml
 
 from .logging_config import setup_logging
 from .models import (
@@ -16,7 +25,7 @@ from .models import (
     WhatIfResult,
 )
 from . import storage
-from .config import DOWNLOADS_DIR
+from .config import DOWNLOADS_DIR, BASE_DIR, PUBLIC_BASE_URL
 from .rules_catalog import load_rules_catalog, get_framework_index
 
 
@@ -25,7 +34,10 @@ logger = setup_logging()
 app = FastAPI(
     title="NIS2 Server",
     version="0.3.0",
-    description="Minimalny serwer zbierający raporty NIS2 agentów (multi-framework, risk score, what-if).",
+    description=(
+        "Minimalny serwer zbierający raporty NIS2 agentów "
+        "(multi-framework, risk score, what-if)."
+    ),
 )
 
 app.add_middleware(
@@ -34,6 +46,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _get_base_url(request: Request) -> str:
+    """
+    Zwraca bazowy publiczny URL serwera używany w bootstrapie /register.
+    Jeśli ustawiono PUBLIC_BASE_URL w ENV, używa go.
+    W przeciwnym razie bazuje na request.base_url.
+    """
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL.rstrip("/")
+    return str(request.base_url).rstrip("/")
 
 
 @app.get("/health", tags=["meta"])
@@ -174,7 +197,7 @@ def download_agent_exe():
     tags=["register"],
 )
 def register_bootstrap(request: Request):
-    base_url = str(request.base_url).rstrip("/")
+    base_url = _get_base_url(request)
 
     script = f"""\
 # NIS2 agent bootstrap script
@@ -199,7 +222,7 @@ Invoke-WebRequest -Uri $AgentExeUrl -OutFile $AgentExePath -UseBasicParsing
 
 Write-Host "[3/4] Rejestracja zadania 'NIS2Agent' w Harmonogramie Zadań..."
 
-$Action = New-ScheduledTaskAction -Execute $AgentExePath -Argument "--server-url `"$ServerUrl`" --mode loop --agent-id `"$AgentId`" --rules-dir rules --log-dir logs"
+$Action = New-ScheduledTaskAction -Execute $AgentExePath -Argument "--server-url `"$ServerUrl`" --mode loop --agent-id `"$AgentId`" --rules-source remote --rules-dir rules --log-dir logs"
 
 $Trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration ([TimeSpan]::MaxValue)
 
@@ -212,7 +235,7 @@ Write-Host "[4/4] Gotowe. Agent będzie uruchamiany co 6 godzin."
 
 @app.get("/register", response_class=HTMLResponse, tags=["register"])
 def register_page(request: Request) -> str:
-    base_url = str(request.base_url).rstrip("/")
+    base_url = _get_base_url(request)
     bootstrap_url = f"{base_url}/register/bootstrap.ps1"
 
     return f"""<!DOCTYPE html>
@@ -277,13 +300,13 @@ def register_page(request: Request) -> str:
     </p>
     <ol>
       <li>pobierze <code>nis2_agent_win.exe</code> z serwera,</li>
-      <li>zainstaluje go w <code>C:\\Program Files\\NIS2Agent</code>,</li>
+      <li>zainstaluje go w <code>C:\\\\Program Files\\\\NIS2Agent</code>,</li>
       <li>zarejestruje zadanie <code>NIS2Agent</code> uruchamiane co 6 godzin,</li>
       <li>agent będzie łączył się z serwerem pod adresem: <code>{base_url}</code>.</li>
     </ol>
 
     <p class="muted">
-      Upewnij się, że firewall na tym hoście pozwala na połączenie HTTP do serwera.
+      Upewnij się, że firewall na tym hoście pozwala na połączenie HTTP/HTTPS do serwera.
     </p>
   </div>
 </body>
@@ -869,7 +892,6 @@ def dashboard() -> str:
           tbody.appendChild(tr);
         });
 
-        // mini-wykres risk score w czasie
         const w = svg.clientWidth || 600;
         const h = svg.clientHeight || 120;
         const padding = 10;
@@ -1055,3 +1077,35 @@ def dashboard() -> str:
 </body>
 </html>
 """
+
+
+@app.get("/api/v1/rules/bundle", tags=["rules"])
+def get_rules_bundle():
+    """
+    Zwraca komplet reguł dla agenta:
+    - version: hash reguł (do porównywania po stronie agenta)
+    - rules: lista słowników z polami id/description/severity/condition/tags/frameworks
+    """
+    rules_dir = BASE_DIR / "rules"
+
+    all_rules: list[dict] = []
+    if rules_dir.exists():
+        for path in sorted(rules_dir.glob("*.yml")):
+            data = path.read_text(encoding="utf-8")
+            parsed = yaml.safe_load(data) or []
+            if isinstance(parsed, list):
+                all_rules.extend(parsed)
+
+    raw_bytes = json.dumps(
+        all_rules,
+        sort_keys=True,
+        ensure_ascii=False,
+    ).encode("utf-8")
+    version = hashlib.sha256(raw_bytes).hexdigest()
+
+    return JSONResponse(
+        content={
+            "version": version,
+            "rules": all_rules,
+        }
+    )

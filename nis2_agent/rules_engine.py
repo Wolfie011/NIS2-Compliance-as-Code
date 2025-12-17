@@ -36,6 +36,50 @@ class RulesEngine:
         self.rules: List[Rule] = []
         self._load_rules()
 
+    @classmethod
+    def from_list(cls, items: List[Dict[str, Any]]) -> "RulesEngine":
+        """
+        Tworzy RulesEngine z listy słowników (np. z /api/v1/rules/bundle).
+        """
+        self = cls(rules_dir=".")
+        self.rules = []
+        for item in items:
+            self.rules.append(
+                Rule(
+                    id=item["id"],
+                    description=item.get("description", ""),
+                    severity=item.get("severity", "low"),
+                    condition=item["condition"],
+                    tags=item.get("tags", []),
+                    frameworks=item.get("frameworks", []),
+                )
+            )
+        return self
+
+    def load_from_files(self) -> None:
+        """
+        Jawne przeładowanie reguł z katalogu (nie jest wymagane, bo __init__ woła _load_rules()).
+        """
+        self.rules = []
+        if not self.rules_dir.exists():
+            return
+        for path in sorted(self.rules_dir.glob("*.yml")):
+            with path.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or []
+            if not isinstance(data, list):
+                continue
+            for item in data:
+                self.rules.append(
+                    Rule(
+                        id=item["id"],
+                        description=item.get("description", ""),
+                        severity=item.get("severity", "low"),
+                        condition=item["condition"],
+                        tags=item.get("tags", []),
+                        frameworks=item.get("frameworks", []),
+                    )
+                )
+
     def _load_rules(self) -> None:
         if not self.rules_dir.exists():
             return

@@ -1,22 +1,25 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
 
-# Zmienne środowiskowe dla Pythona
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Systemowe zależności (minimalne)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+ && rm -rf /var/lib/apt/lists/*
 
-# Zależności tylko serwera
-COPY requirements-server.txt .
+# Zależności Pythona - serwer
+COPY requirements-server.txt ./
 RUN pip install --no-cache-dir -r requirements-server.txt
 
-# Kod serwera + reguły + binarka agenta
+# Kod serwera + reguły
 COPY nis2_server ./nis2_server
 COPY rules ./rules
-COPY downloads ./downloads
 
-# Katalog na dane serwera
-VOLUME ["/app/server_data"]
+# Katalogi na dane
+RUN mkdir -p server_data downloads
 
 EXPOSE 8000
 

@@ -4,10 +4,14 @@ services:
   nis2_server:
     build: .
     container_name: nis2_server
-    restart: unless-stopped
     ports:
       - "8000:8000"
+    environment:
+      # Ustaw na publiczny URL, jeśli serwer będzie wystawiony na świat
+      # np. PUBLIC_BASE_URL=https://nis2.example.com
+      - PUBLIC_BASE_URL=http://localhost:8000
     volumes:
       - ./server_data:/app/server_data
-      - ./rules:/app/rules
+      - ./rules:/app/rules:ro
       - ./downloads:/app/downloads
+    restart: unless-stopped

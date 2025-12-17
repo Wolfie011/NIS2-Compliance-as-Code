@@ -11,7 +11,7 @@ from typing import Any, Dict
 from nis2_agent.logging_config import setup_logging
 from nis2_agent.scanner import scan_system
 from nis2_agent.rules_engine import RulesEngine
-from nis2_agent.client import send_report, fetch_config
+from nis2_agent.client import send_report, fetch_config, fetch_rules_bundle
 
 
 DEFAULT_INTERVAL_SECONDS = 6 * 60 * 60  # 6h
@@ -27,8 +27,53 @@ def save_json(data: Dict[str, Any], directory: str, prefix: str) -> Path:
     return file_path
 
 
+def build_rules_engine(
+    logger,
+    rules_source: str,
+    rules_dir: str,
+    server_url: str | None,
+) -> RulesEngine:
+    """
+    Buduje RulesEngine w zależności od źródła reguł:
+    - local: YAML z katalogu rules_dir
+    - remote: bundle z nis2_server (/api/v1/rules/bundle), z fallbackiem na lokalne pliki
+    """
+    if rules_source == "remote":
+        if not server_url:
+            logger.warning(
+                "rules_source=remote, ale nie podano server_url – używam lokalnych reguł."
+            )
+        else:
+            try:
+                bundle = fetch_rules_bundle(server_url)
+                rules = bundle.get("rules") or []
+                version = bundle.get("version")
+                logger.info(
+                    "Loaded %d rules from server (version=%s)",
+                    len(rules),
+                    version,
+                )
+                return RulesEngine.from_list(rules)
+            except Exception as e:
+                logger.error(
+                    "Failed to fetch rules bundle from server (%s). "
+                    "Falling back to local rules in %s",
+                    e,
+                    rules_dir,
+                )
+
+    engine = RulesEngine(rules_dir=rules_dir)
+    logger.info(
+        "Loaded %d rules from local directory %s",
+        len(engine.rules),
+        rules_dir,
+    )
+    return engine
+
+
 def run_single_scan(
     logger,
+    rules_source: str,
     rules_dir: str,
     log_dir: str,
     server_url: str | None,
@@ -42,15 +87,22 @@ def run_single_scan(
     scan_file = save_json(scan_dict, log_dir, "scan")
     logger.info("Scan saved to %s", scan_file)
 
-    engine = RulesEngine(rules_dir=rules_dir)
-    logger.info("Loaded %d rules", len(engine.rules))
+    engine = build_rules_engine(
+        logger=logger,
+        rules_source=rules_source,
+        rules_dir=rules_dir,
+        server_url=server_url,
+    )
+    logger.info("Rules engine initialized with %d rules", len(engine.rules))
 
     rule_results = engine.evaluate(scan_dict)
 
     # Zapis wyników do JSON
     results_serialized = [engine.serialize_result(r) for r in rule_results]
     results_file = save_json(
-        {"results": results_serialized}, log_dir, "rules"
+        {"results": results_serialized},
+        log_dir,
+        "rules",
     )
     logger.info("Rule results saved to %s", results_file)
 
@@ -108,12 +160,15 @@ def run_single_scan(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="NIS2 agent (scan + rules + optional HTTP report, loop or once)."
+        description=(
+            "NIS2 agent (scan + rules + optional HTTP report, loop or once). "
+            "Obsługuje reguły lokalne lub zdalne (remote bundle)."
+        )
     )
     parser.add_argument(
         "--rules-dir",
         default="rules",
-        help="Directory with YAML rules files.",
+        help="Directory with YAML rules files (dla rules-source=local).",
     )
     parser.add_argument(
         "--log-dir",
@@ -141,16 +196,31 @@ def main() -> None:
         default="once",
         help="Tryb pracy agenta: 'once' (jeden skan) albo 'loop' (cyklicznie).",
     )
+    parser.add_argument(
+        "--rules-source",
+        choices=["local", "remote"],
+        default="local",
+        help=(
+            "Źródło reguł: 'local' (pliki YAML z --rules-dir) "
+            "lub 'remote' (bundle z nis2_server /api/v1/rules/bundle)."
+        ),
+    )
 
     args = parser.parse_args()
 
     logger = setup_logging(args.log_dir)
     agent_id = args.agent_id or socket.gethostname()
-    logger.info("Agent starting with id=%s, mode=%s", agent_id, args.mode)
+    logger.info(
+        "Agent starting with id=%s, mode=%s, rules_source=%s",
+        agent_id,
+        args.mode,
+        args.rules_source,
+    )
 
     if args.mode == "once":
         run_single_scan(
             logger=logger,
+            rules_source=args.rules_source,
             rules_dir=args.rules_dir,
             log_dir=args.log_dir,
             server_url=args.server_url,
@@ -186,6 +256,7 @@ def main() -> None:
             # 2. Wykonaj skan
             run_single_scan(
                 logger=logger,
+                rules_source=args.rules_source,
                 rules_dir=args.rules_dir,
                 log_dir=args.log_dir,
                 server_url=args.server_url,

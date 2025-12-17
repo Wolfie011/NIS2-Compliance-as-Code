@@ -1,1 +1,0 @@
-{"rule_id": "NIS2-SSH-002", "passed": false, "severity": "medium", "description": "SSH nie powinien pozwalać na logowanie hasłem.", "details": null, "timestamp": "2025-12-09T01:59:13.115614Z"}

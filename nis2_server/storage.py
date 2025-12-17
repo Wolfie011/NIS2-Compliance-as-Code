@@ -271,28 +271,23 @@ def compute_time_to_fix_meta(agent_id: str) -> Dict[str, RuleTimeMeta]:
         ts = data.get("received_at")
         rules = data.get("rules", []) or []
 
-        # dla reguł, których w tym raporcie nie ma – nie zmieniamy nic
         for r in rules:
             rid = r.get("rule_id")
             passed = bool(r.get("passed", False))
             prev = last_status.get(rid)
 
             if prev is None:
-                # pierwszy raz widzimy tę regułę
                 if not passed:
                     failing_since_ts[rid] = ts
                     failing_scans_count[rid] = 1
             else:
                 if not passed:
                     if prev:
-                        # przejście PASS -> FAIL
                         failing_since_ts[rid] = ts
                         failing_scans_count[rid] = 1
                     else:
-                        # dalej FAIL
                         failing_scans_count[rid] = failing_scans_count.get(rid, 0) + 1
                 else:
-                    # teraz PASS – streak FAIL się kończy
                     failing_since_ts.pop(rid, None)
                     failing_scans_count.pop(rid, None)
 
@@ -392,7 +387,6 @@ def get_what_if(agent_id: str, framework: str) -> WhatIfResult:
 
     data = _load_latest_report_raw(agent_id)
     if not data:
-        # brak raportów – wszystko not_implemented
         return WhatIfResult(
             agent_id=agent_id,
             framework=framework,

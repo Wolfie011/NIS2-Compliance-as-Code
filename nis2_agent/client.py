@@ -91,3 +91,19 @@ def fetch_config(
         data.get("scan_interval_seconds"),
     )
     return data
+
+
+def fetch_rules_bundle(server_url: str) -> Dict[str, Any]:
+    """
+    Pobiera z serwera komplet reguł dla agenta z endpointu /api/v1/rules/bundle.
+    Oczekuje struktury:
+      {
+        "version": "<hash>",
+        "rules": [ {...}, ... ]
+      }
+    """
+    url = server_url.rstrip("/") + "/api/v1/rules/bundle"
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    data: Dict[str, Any] = resp.json()
+    return data
