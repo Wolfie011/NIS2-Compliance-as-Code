@@ -1,0 +1,58 @@
+# Zalecane ustawienia dla Windows Defender
+# Może nie działać w przypadku zainstalowanego innego Antywirusa
+
+- id: "WIN-DEFENDER-01"
+  description: "Usluga antywirusowa jest wylaczona"
+  severity: "high"
+  condition: >
+    "AMServiceEnabled:True" not in os.popen("powershell Get-MpComputerStatus").read().replace(" ", "").split('\n')
+  tags: ["malware","hardening"]
+  frameworks: ["NIS2:art21"]
+
+- id: "WIN-DEFENDER-02"
+  description: "Ochrona antywirusowa jest wylaczona"
+  severity: "high"
+  condition: >
+    "AntivirusEnabled:True" not in os.popen("powershell Get-MpComputerStatus").read().replace(" ", "").split('\n')
+  tags: ["malware","hardening"]
+  frameworks: ["NIS2:art21"]
+
+- id: "WIN-DEFENDER-03"
+  description: "Ochrona w czasie rzeczywistym jest wylaczona"
+  severity: "high"
+  condition: >
+    "BehaviorMonitorEnabled:True" not in os.popen("powershell Get-MpComputerStatus").read().replace(" ", "").split('\n')
+  tags: ["malware","hardening"]
+  frameworks: ["NIS2:art21"]
+
+- id: "WIN-DEFENDER-04"
+  description: "Ochrona sieciowa NIS jest wylaczona"
+  severity: "high"
+  condition: >
+    "NISEnabled:True" not in os.popen("powershell Get-MpComputerStatus").read().replace(" ", "").split('\n')
+  tags: ["malware","hardening"]
+  frameworks: ["NIS2:art21"]
+
+- id: "WIN-DEFENDER-05"
+  description: "Ochrona antyspyware jest wylaczona"
+  severity: "high"
+  condition: >
+    "AntispywareEnabled:True" not in os.popen("powershell Get-MpComputerStatus").read().replace(" ", "").split('\n')
+  tags: ["malware","hardening"]
+  frameworks: ["NIS2:art21"]
+
+- id: "WIN-DEFENDER-06"
+  description: "Skanowanie pobranych plikow jest wylaczone"
+  severity: "high"
+  condition: >
+    "IoavProtectionEnabled:True" not in os.popen("powershell Get-MpComputerStatus").read().replace(" ", "").split('\n')
+  tags: ["malware","hardening"]
+  frameworks: ["NIS2:art21"]
+
+- id: "WIN-DEFENDER-07"
+  description: "Ochrona on-access jest wylaczona"
+  severity: "high"
+  condition: >
+    "OnAccessProtectionEnabled:True" not in os.popen("powershell Get-MpComputerStatus").read().replace(" ", "").split('\n')
+  tags: ["malware","hardening"]
+  frameworks: ["NIS2:art21"]
