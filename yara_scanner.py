@@ -29,13 +29,15 @@ class YaraScanner:
                     try:
                         f_path = root+"\\"+file
                         matches = self.rules.match(filepath=f_path,externals={"filepath":f_path},fast=fast,timeout=timeout)
-                        print(f"Scanning: {f_path}")
+                        #print(f"Scanning: {f_path}")
                         if matches:
-                            print("[!] File matched yara rule")
+                            print(f"[!] File matched yara rule: {f_path}")
                             result.append(f_path)
                     except Exception as e:
                         print(e)
         print(f"Scan finished: {time.ctime(time.time())}")
+        print("Detected files:")
+        [print(x) for x in result]
         return result
     def malware_full_scan(self) -> list[str]:
         self.malware_fast_scan(directories=["C:\\"],timeout=15)
